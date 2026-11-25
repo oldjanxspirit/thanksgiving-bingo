@@ -78,6 +78,9 @@ details summary{font-weight:700;cursor:pointer}
     </div>
     <h2>Ideas so far <span id="ideaCount" class="hint"></span></h2>
     <div id="ideaList"></div>
+    <h2>Default ideas <span id="defCount" class="hint"></span></h2>
+    <div class="hint" style="margin:0 0 6px">Starter ideas that come with the game. Thumbs up the ones you want, thumbs down the ones that don’t fit us. The host makes the final call.</div>
+    <div id="defList"></div>
   </section>
 
   <!-- GAME MODE -->
@@ -180,11 +183,11 @@ var firebaseConfig = {
   /* ---------- state ---------- */
   var db = null, myId = null;
   var mode = "build", adminUid = null;
-  var ideas = {}, excluded = {}, players = {};
+  var ideas = {}, excluded = {}, players = {}, votes = {};
   var me = null, open = {};
   var seen = {}, loaded = false, loadTimer;
   var pending = false, dirty = false;
-  var PATHS = ["config/mode","admin/uid","ideas","curation/excluded","players"];
+  var PATHS = ["config/mode","admin/uid","ideas","curation/excluded","players","votes"];
 
   function setStatus(t, bad){ var s=$("status"); s.textContent=t; s.className = bad ? "bad" : ""; }
   function isAdmin(){ return !!(adminUid && myId && adminUid === myId); }
@@ -261,18 +264,46 @@ var firebaseConfig = {
   }
 
   /* ---------- rendering: build mode ---------- */
+  function tally(item){
+    var v = votes[item] || {}, up = 0, down = 0;
+    Object.keys(v).forEach(function(u){ if (v[u] === 1) up++; else if (v[u] === -1) down++; });
+    return { up: up, down: down, mine: myId ? (v[myId] || 0) : 0 };
+  }
+  function vote(item, val){
+    if (!db || !myId) return;
+    var cur = (votes[item] || {})[myId] || 0;
+    var p = ref(db, "votes/" + item + "/" + myId);
+    dbDo(cur === val ? remove(p) : set(p, val));
+  }
+  function voteBox(item){
+    var t = tally(item), w = el("div","acts");
+    var u = el("button","btn ghost sm" + (t.mine===1 ? " on" : ""), "👍 " + t.up);
+    var d = el("button","btn ghost sm" + (t.mine===-1 ? " on" : ""), "👎 " + t.down);
+    u.addEventListener("click", function(){ vote(item, 1); });
+    d.addEventListener("click", function(){ vote(item, -1); });
+    w.appendChild(u); w.appendChild(d);
+    return w;
+  }
+  function ideaRow(text, item, tag){
+    var row = el("div","idea");
+    var tx = el("div","tx"); tx.appendChild(document.createTextNode(text + " "));
+    tx.appendChild(el("span","pill" + (tag==="family" ? " ok" : ""), tag));
+    row.appendChild(tx);
+    row.appendChild(voteBox(item));
+    return row;
+  }
   function renderIdeas(){
     var list = Object.keys(ideas).map(function(id){ return ideas[id]; })
       .filter(function(i){ return i.status !== "rejected"; })
       .sort(function(a,b){ return b.t - a.t; });
     $("ideaCount").textContent = "(" + list.length + ")";
     var box = $("ideaList"); box.textContent = "";
-    if (!list.length) { box.appendChild(el("div","hint","No ideas yet. Be the first!")); return; }
-    list.forEach(function(i){
-      var row = el("div","idea");
-      row.appendChild(el("div","tx",i.text));
-      box.appendChild(row);
-    });
+    if (!list.length) box.appendChild(el("div","hint","No family ideas yet. Be the first!"));
+    list.forEach(function(i){ box.appendChild(ideaRow(i.text, i.id, "family")); });
+    var defs = autoIncluded();
+    $("defCount").textContent = "(" + defs.length + ")";
+    var db2 = $("defList"); db2.textContent = "";
+    defs.forEach(function(t){ db2.appendChild(ideaRow(t, key(t), "default")); });
   }
 
   /* ---------- rendering: game mode ---------- */
@@ -373,6 +404,7 @@ var firebaseConfig = {
       var row = el("div","idea");
       var tx = el("div","tx"); tx.appendChild(document.createTextNode(i.text + " "));
       tx.appendChild(el("span","pill" + (i.status==="approved"?" ok":(i.status==="rejected"?" no":"")), i.status));
+      var ti = tally(i.id); tx.appendChild(el("span","pill"," 👍" + ti.up + " 👎" + ti.down));
       row.appendChild(tx);
       var acts = el("div","acts");
       acts.appendChild(mkBtn("Approve", function(){ dbDo(set(ref(db,"ideas/"+i.id+"/status"),"approved")); }));
@@ -387,7 +419,9 @@ var firebaseConfig = {
     ITEMS.forEach(function(t){
       var k = key(t), cut = !!excluded[k];
       var row = el("div","idea");
-      row.appendChild(el("div","tx",t));
+      var tx2 = el("div","tx"); tx2.appendChild(document.createTextNode(t + " "));
+      var tt = tally(k); tx2.appendChild(el("span","pill","👍" + tt.up + " 👎" + tt.down));
+      row.appendChild(tx2);
       var acts = el("div","acts");
       acts.appendChild(mkBtn(cut ? "Cut" : "Kept", function(){
         dbDo(cut ? remove(ref(db,"curation/excluded/"+k)) : set(ref(db,"curation/excluded/"+k), true));
@@ -484,6 +518,7 @@ var firebaseConfig = {
       ideas = next;
     });
     sub("curation/excluded", function(v){ excluded = {}; Object.keys(v || {}).forEach(function(k){ if (v[k] === true) excluded[k] = true; }); });
+    sub("votes", function(v){ votes = (v && typeof v === "object") ? v : {}; });
     sub("players", function(v){
       var next = {};
       Object.keys(v || {}).forEach(function(id){ var p = cleanPlayer(v[id], id); if (p) next[id] = p; });
