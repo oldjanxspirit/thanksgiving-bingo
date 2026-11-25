@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thanksgiving Bingo</title>
+<style>
+:root{
+  --bg:#fbf3e6; --card:#fffaf1; --ink:#3b2a1a; --muted:#8a7258; --line:#e6d3b3;
+  --accent:#c2571a; --accent-ink:#fff; --mark:#f2b441; --win:#6a9a3a;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#1f1710; --card:#2a2017; --ink:#f4e6d0; --muted:#b39a7a; --line:#4a3826; --accent:#e07a3a; --accent-ink:#1f1710; --mark:#c78b1e; --win:#7fb04a; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+#app{max-width:480px;margin:0 auto;padding:16px 12px 40px}
+h1{font-size:24px;margin:4px 0 2px}
+h2{font-size:16px;margin:24px 0 8px}
+#status{font-size:13px;color:var(--muted);margin-bottom:12px}
+#status.bad{color:#c0392b}
+#banner{background:var(--win);color:#fff;border-radius:12px;padding:10px 14px;margin:8px 0;font-weight:600}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+input[type=text]{width:100%;font-size:17px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-bottom:10px}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:10px;padding:12px 16px;font-weight:600;font-size:16px}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-size:14px;padding:8px 12px;font-weight:500}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.tile{aspect-ratio:1;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:2px;font-size:11px;line-height:1.15;display:flex;align-items:center;justify-content:center;text-align:center;overflow-wrap:anywhere;hyphens:auto;min-width:0}
+.tile.marked{background:var(--mark);color:#2b1c05;font-weight:600}
+.tile.free{font-weight:700}
+.tile.win{background:var(--win);color:#fff;border-color:var(--win)}
+.tile.ro{font-size:9px;cursor:default}
+.who{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer}
+.who .top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.who .nm{font-weight:600}
+.who .meta{font-size:12px;color:var(--muted)}
+.mini{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;max-width:140px}
+.mini i{aspect-ratio:1;border-radius:3px;background:var(--line);display:block}
+.mini i.m{background:var(--mark)}
+.mini i.w{background:var(--win)}
+.badge{background:var(--win);color:#fff;border-radius:999px;font-size:12px;padding:2px 8px;font-weight:700}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>🦃 Thanksgiving Bingo</h1>
+  <div id="status">Loading…</div>
+  <div id="banner" hidden></div>
+
+  <section id="join" class="panel" hidden>
+    <div style="font-weight:600;margin-bottom:8px">Who's playing?</div>
+    <input type="text" id="nameIn" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button class="btn" id="joinBtn" style="width:100%">Get my board</button>
+  </section>
+
+  <section id="me" hidden>
+    <div class="row" style="margin:0 0 8px">
+      <div><b id="meName"></b> <span class="hint" id="meScore"></span></div>
+    </div>
+    <div class="grid" id="myGrid"></div>
+    <div class="row">
+      <button class="btn ghost" id="newBoard">New board</button>
+      <span class="hint">Tap a square when it happens.</span>
+    </div>
+  </section>
+
+  <section id="everyone" hidden>
+    <h2>Everyone's boards</h2>
+    <div id="others"></div>
+  </section>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+var firebaseConfig = {
+  apiKey: "AIzaSyAfq395NRVHggCoM8zG75765A-xWefPjB8",
+  authDomain: "thanksgiving-bingo-9653d.firebaseapp.com",
+  databaseURL: "https://thanksgiving-bingo-9653d-default-rtdb.firebaseio.com",
+  projectId: "thanksgiving-bingo-9653d",
+  storageBucket: "thanksgiving-bingo-9653d.firebasestorage.app",
+  messagingSenderId: "325482317534",
+  appId: "1:325482317534:web:bebf498062d71775dce44f"
+};
+
+(function(){
+  var ITEMS = [
+    "Football on TV","Someone naps","Seconds on pie","Dog begs at table","“What are you thankful for?”",
+    "Something burnt","“Pass the gravy”","Kid won’t eat veggies","Group photo attempt","“I’m so full”",
+    "Cranberry from the can","Spilled drink","Wishbone pull","Dishes debate","Someone’s late",
+    "To-go leftover plates","Forgot an ingredient","Long grace","Parade mentioned","Same story again",
+    "Tablecloth stain","Pants unbuttoned","Black Friday talk","Asked for the recipe","Crowd at the carving",
+    "Kids’ table drama","“One more bite”","Board game comes out","Pumpkin AND pecan","Laughing till crying"
+  ];
+  var FREE = 12;
+  var LINES = [];
+  var r, c;
+  for (r=0;r<5;r++) LINES.push([0,1,2,3,4].map(function(k){return r*5+k;}));
+  for (c=0;c<5;c++) LINES.push([0,1,2,3,4].map(function(k){return k*5+c;}));
+  LINES.push([0,6,12,18,24],[4,8,12,16,20]);
+
+  function $(id){ return document.getElementById(id); }
+  function el(tag, cls, text){ var e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+
+  function newBoard(){
+    var a = ITEMS.slice();
+    for (var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; }
+    var b = a.slice(0,24);
+    b.splice(FREE,0,"FREE");
+    return b;
+  }
+  function score(p){
+    var m = new Set(p.marked); m.add(FREE);
+    var win = new Set(), n = 0;
+    LINES.forEach(function(l){ if (l.every(function(i){return m.has(i);})) { n++; l.forEach(function(i){win.add(i);}); } });
+    return { n:n, win:win, set:m, count:m.size };
+  }
+  function toList(x){ return Array.isArray(x) ? x : (x && typeof x === "object" ? Object.values(x) : []); }
+  function clean(d, id){
+    if (!d) return null;
+    var board = toList(d.board);
+    if (board.length !== 25) return null;
+    return {
+      id: id,
+      name: String(d.name || "Guest").slice(0,24),
+      board: board.map(function(x){ return String(x).slice(0,60); }),
+      marked: toList(d.marked).filter(function(i){ return Number.isInteger(i) && i>=0 && i<25; })
+    };
+  }
+
+  var db = null, myId = null;
+  var players = {}, me = null, loaded = false, open = {};
+  var pending = false, dirty = false;
+
+  function setStatus(t, bad){ var s=$("status"); s.textContent=t; s.className = bad ? "bad" : ""; }
+
+  /* ---------- saving ---------- */
+  function save(){
+    if (!db || !myId || !me) return;
+    if (pending) { dirty = true; return; }
+    pending = true;
+    Promise.resolve()
+      .then(function(){ return set(ref(db, "players/" + myId), { uid: myId, name: me.name, board: me.board, marked: me.marked, t: Date.now() }); })
+      .catch(function(){ setStatus("Couldn’t save your last tap. Check your connection.", true); })
+      .then(function(){ pending = false; if (dirty) { dirty = false; save(); } });
+  }
+
+  /* ---------- rendering ---------- */
+  function render(){
+    $("join").hidden = !(loaded && !me);
+    $("me").hidden = !me;
+    $("everyone").hidden = !(db && myId);
+
+    if (me) renderMine();
+    renderOthers();
+    renderBanner();
+  }
+
+  function renderMine(){
+    var sc = score(me);
+    $("meName").textContent = me.name;
+    $("meScore").textContent = sc.n ? ("· " + sc.n + (sc.n===1 ? " bingo" : " bingos") + " 🎉") : ("· " + (sc.count-1) + "/24 squares");
+    var g = $("myGrid"); g.textContent = "";
+    me.board.forEach(function(txt, i){
+      var b = el("button", "tile", txt);
+      if (i === FREE) b.className += " free marked";
+      else if (sc.set.has(i)) b.className += " marked";
+      if (sc.win.has(i)) b.className += " win";
+      b.addEventListener("click", function(){ toggle(i); });
+      g.appendChild(b);
+    });
+  }
+
+  function toggle(i){
+    if (!me || i === FREE) return;
+    var k = me.marked.indexOf(i);
+    if (k >= 0) me.marked.splice(k,1); else me.marked.push(i);
+    render();
+    save();
+  }
+
+  function renderOthers(){
+    var box = $("others"); box.textContent = "";
+    var list = Object.keys(players).map(function(id){ return players[id]; });
+    if (me && !players[myId]) list.push(me);
+    list.forEach(function(p){ p._s = score(p); });
+    list.sort(function(a,b){ return (b._s.n - a._s.n) || (b._s.count - a._s.count); });
+    if (!list.length) { box.appendChild(el("div","hint","No one has joined yet.")); return; }
+    list.forEach(function(p){
+      var isMe = p.id === myId;
+      var card = el("div","who");
+      var top = el("div","top");
+      var left = el("div");
+      left.appendChild(el("div","nm", p.name + (isMe ? " (you)" : "")));
+      left.appendChild(el("div","meta", (p._s.count-1) + "/24 squares"));
+      top.appendChild(left);
+      if (p._s.n) top.appendChild(el("span","badge","BINGO ×" + p._s.n));
+      card.appendChild(top);
+
+      if (open[p.id]) {
+        var g = el("div","grid");
+        p.board.forEach(function(txt,i){
+          var t = el("div","tile ro", txt);
+          if (p._s.set.has(i)) t.className += " marked";
+          if (p._s.win.has(i)) t.className += " win";
+          g.appendChild(t);
+        });
+        card.appendChild(g);
+      } else {
+        var m = el("div","mini");
+        for (var i=0;i<25;i++){
+          var c = el("i", p._s.win.has(i) ? "w" : (p._s.set.has(i) ? "m" : ""));
+          m.appendChild(c);
+        }
+        card.appendChild(m);
+        card.appendChild(el("div","hint","Tap to see squares"));
+      }
+      card.addEventListener("click", function(){ open[p.id] = !open[p.id]; renderOthers(); });
+      box.appendChild(card);
+    });
+  }
+
+  function renderBanner(){
+    var b = $("banner");
+    var winners = Object.keys(players).map(function(id){ return players[id]; }).filter(function(p){ return score(p).n > 0; });
+    if (!winners.length) { b.hidden = true; return; }
+    b.hidden = false;
+    b.textContent = "🎉 BINGO: " + winners.map(function(p){ return p.name; }).join(", ");
+  }
+
+  /* ---------- data ---------- */
+  function onData(val){
+    var next = {};
+    Object.keys(val || {}).forEach(function(id){
+      var p = clean(val[id], id);
+      if (p) next[id] = p;
+    });
+    players = next;
+    if (!pending && !dirty && myId && players[myId]) me = players[myId];
+    loaded = true;
+    clearTimeout(loadTimer);
+    setStatus("Live — everyone's boards update as they play");
+    render();
+  }
+
+  var loadTimer;
+
+  /* ---------- events ---------- */
+  $("joinBtn").addEventListener("click", function(){
+    var n = $("nameIn").value.trim();
+    if (!n) { $("nameIn").focus(); return; }
+    me = { id: myId || "local", name: n.slice(0,24), board: newBoard(), marked: [FREE] };
+    render(); save();
+  });
+  $("nameIn").addEventListener("keydown", function(e){ if (e.key === "Enter") $("joinBtn").click(); });
+
+  var nbTimer;
+  $("newBoard").addEventListener("click", function(){
+    var b = $("newBoard");
+    if (b.dataset.arm !== "1") {
+      b.dataset.arm = "1"; b.textContent = "Tap again to confirm";
+      nbTimer = setTimeout(function(){ b.dataset.arm = ""; b.textContent = "New board"; }, 3000);
+      return;
+    }
+    clearTimeout(nbTimer); b.dataset.arm = ""; b.textContent = "New board";
+    me.board = newBoard(); me.marked = [FREE];
+    render(); save();
+  });
+
+  /* ---------- startup ---------- */
+  (async function(){
+    var rtdb = null;
+    try {
+      var app = initializeApp(firebaseConfig);
+      var auth = getAuth(app);
+      rtdb = getDatabase(app);
+      var cred = await signInAnonymously(auth);
+      myId = cred.user.uid;
+    } catch(e) {
+      loaded = true;
+      setStatus("Playing solo — couldn’t connect to the shared game.", true);
+      render(); return;
+    }
+    db = rtdb;
+    loadTimer = setTimeout(function(){
+      if (!loaded) { loaded = true; setStatus("Couldn’t reach the shared game. Try reloading.", true); render(); }
+    }, 10000);
+    onValue(ref(db, "players"), function(snap){ onData(snap.val()); }, function(){
+      setStatus("Couldn’t read the shared game. Try reloading.", true);
+      loaded = true; render();
+    });
+  })();
+})();
+</script>
+</body>
+</html>
