@@ -53,6 +53,11 @@ button:disabled{opacity:.5;cursor:default}
 .pill{font-size:11px;border-radius:999px;padding:1px 7px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
 .pill.ok{background:var(--win);color:#fff;border-color:var(--win)}
 .pill.no{color:var(--bad);border-color:var(--bad)}
+.sect{border-radius:14px;padding:4px 12px 8px;margin-top:20px}
+.sect h2{margin:10px 0 8px}
+.sect.fam{background:var(--card);border:2px solid var(--accent)}
+.sect.def{background:transparent;border:2px dashed var(--line)}
+.sect.def .idea{color:var(--muted)}
 details.panel{margin-top:24px}
 details summary{font-weight:700;cursor:pointer}
 .seg{display:flex;gap:6px;margin:10px 0}
@@ -76,11 +81,15 @@ details summary{font-weight:700;cursor:pointer}
       <button class="btn" id="ideaBtn" style="width:100%" disabled>Add idea</button>
       <div class="hint" id="ideaMsg"></div>
     </div>
-    <h2>Ideas so far <span id="ideaCount" class="hint"></span></h2>
-    <div id="ideaList"></div>
-    <h2>Default ideas <span id="defCount" class="hint"></span></h2>
-    <div class="hint" style="margin:0 0 6px">Starter ideas that come with the game. Thumbs up the ones you want, thumbs down the ones that don’t fit us. The host makes the final call.</div>
-    <div id="defList"></div>
+    <div class="sect fam">
+      <h2>👨‍👩‍👧 Family ideas <span id="ideaCount" class="hint"></span></h2>
+      <div id="ideaList"></div>
+    </div>
+    <div class="sect def">
+      <h2>📋 Default ideas <span id="defCount" class="hint"></span></h2>
+      <div class="hint" style="margin:0 0 6px">Starter ideas that come with the game. Thumbs up the ones you want, thumbs down the ones that don’t fit us. The host makes the final call.</div>
+      <div id="defList"></div>
+    </div>
   </section>
 
   <!-- GAME MODE -->
