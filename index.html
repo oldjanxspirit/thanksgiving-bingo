@@ -143,7 +143,7 @@ details summary{font-weight:700;cursor:pointer}
     <div id="adminIdeas"></div>
 
     <h3>Auto-generated ideas</h3>
-    <div class="hint" style="margin-top:0">Cut any that don’t fit your family. Family ideas always get priority on boards.</div>
+    <div class="hint" style="margin-top:0">Cut any that don’t fit your family. Boards are drawn at random from family + kept ideas, weighted by thumbs and a 1.5× boost for family ideas. Odds ×1.0 = an unvoted default.</div>
     <div id="adminAuto"></div>
 
     <h3>Game</h3>
@@ -216,21 +216,57 @@ var firebaseConfig = {
   }
   function autoIncluded(){ return ITEMS.filter(function(t){ return !excluded[key(t)]; }); }
 
-  function newBoard(){
-    var seenKeys = {}, chosen = [];
-    function take(list, max){
-      shuffle(list.slice()).forEach(function(t){
-        if (chosen.length >= max) return;
-        var k = key(t); if (seenKeys[k]) return;
-        seenKeys[k] = 1; chosen.push(t);
+  /* Weighted pool: family ideas x1.5, each net vote scales odds by e^0.35 (capped at +/-5). */
+  function weightOf(item, family){
+    var t = tally(item), sc = Math.max(-5, Math.min(5, t.up - t.down));
+    return { w: (family ? 1.5 : 1) * Math.exp(0.35 * sc), sc: sc };
+  }
+  function buildPool(){
+    var pool = [], seenKeys = {};
+    Object.keys(ideas).map(function(id){ return ideas[id]; })
+      .filter(function(i){ return i.status === "approved"; })
+      .forEach(function(i){
+        var k = key(i.text); if (seenKeys[k]) return; seenKeys[k] = 1;
+        var x = weightOf(i.id, true); pool.push({ text: i.text, w: x.w, sc: x.sc });
       });
+    autoIncluded().forEach(function(t){
+      var k = key(t); if (seenKeys[k]) return; seenKeys[k] = 1;
+      var x = weightOf(k, false); pool.push({ text: t, w: x.w, sc: x.sc });
+    });
+    return pool;
+  }
+  function drawWeighted(pool, n){
+    var left = pool.slice(), out = [];
+    while (out.length < n && left.length) {
+      var sum = 0, i;
+      for (i=0;i<left.length;i++) sum += left[i].w;
+      var r = Math.random() * sum, pick = left.length - 1;
+      for (i=0;i<left.length;i++){ r -= left[i].w; if (r <= 0) { pick = i; break; } }
+      out.push(left.splice(pick,1)[0]);
     }
-    take(approvedUser(), 24);          // family ideas first
-    take(autoIncluded(), 24);          // then auto-generated, if needed
-    take(ITEMS, 24);                   // last resort so a board always fills
-    shuffle(chosen);
-    chosen.splice(FREE, 0, "FREE");
-    return chosen;
+    return out;
+  }
+  function newBoard(){
+    var pool = buildPool();
+    var liked = pool.filter(function(x){ return x.sc >= 0; });
+    var neg = pool.filter(function(x){ return x.sc < 0; });
+    var chosen = drawWeighted(liked, 24);
+    if (chosen.length < 24) chosen = chosen.concat(drawWeighted(neg, 24 - chosen.length));
+    var texts = chosen.map(function(x){ return x.text; });
+    if (texts.length < 24) {            // last resort so a board always fills
+      var have = {}; texts.forEach(function(t){ have[key(t)] = 1; });
+      shuffle(ITEMS.slice()).forEach(function(t){ if (texts.length < 24 && !have[key(t)]) { have[key(t)] = 1; texts.push(t); } });
+    }
+    shuffle(texts);
+    texts.splice(FREE, 0, "FREE");
+    return texts;
+  }
+  function oddsMap(){
+    var m = {}; buildPool().forEach(function(x){ m[key(x.text)] = x; }); return m;
+  }
+  function oddsLabel(text, om){
+    var x = om[key(text)];
+    return x ? ("odds ×" + x.w.toFixed(1) + (x.sc < 0 ? " (low)" : "")) : "odds —";
   }
   function total(p){ return (p.banked || 0) + score(p).n; }
   function score(p){
@@ -448,6 +484,7 @@ var firebaseConfig = {
     $("poolInfo").textContent = approved + " family ideas approved · " + pend + " pending · " + autos + " auto ideas kept. " +
       (approved + autos < 24 ? "Heads up: fewer than 24 ideas in the pool, so boards will be topped up from the full auto list." : "Pool is big enough for full boards.");
 
+    var om = oddsMap();
     var box = $("adminIdeas"); box.textContent = "";
     var order = { pending: 0, approved: 1, rejected: 2 };
     all.sort(function(a,b){ return (order[a.status]-order[b.status]) || (b.t - a.t); });
@@ -457,6 +494,7 @@ var firebaseConfig = {
       var tx = el("div","tx"); tx.appendChild(document.createTextNode(i.text + " "));
       tx.appendChild(el("span","pill" + (i.status==="approved"?" ok":(i.status==="rejected"?" no":"")), i.status));
       var ti = tally(i.id); tx.appendChild(el("span","pill"," 👍" + ti.up + " 👎" + ti.down));
+      tx.appendChild(el("span","pill", oddsLabel(i.text, om)));
       row.appendChild(tx);
       var acts = el("div","acts");
       acts.appendChild(mkBtn("Approve", function(){ dbDo(set(ref(db,"ideas/"+i.id+"/status"),"approved")); }));
@@ -473,6 +511,7 @@ var firebaseConfig = {
       var row = el("div","idea");
       var tx2 = el("div","tx"); tx2.appendChild(document.createTextNode(t + " "));
       var tt = tally(k); tx2.appendChild(el("span","pill","👍" + tt.up + " 👎" + tt.down));
+      tx2.appendChild(el("span","pill", oddsLabel(t, om)));
       row.appendChild(tx2);
       var acts = el("div","acts");
       acts.appendChild(mkBtn(cut ? "Cut" : "Kept", function(){
