@@ -115,6 +115,7 @@ details summary{font-weight:700;cursor:pointer}
       </div>
       <div class="grid" id="myGrid"></div>
       <div class="row">
+        <button class="btn" id="nextCard" hidden>Start next card ➜</button>
         <button class="btn ghost" id="newBoard">New board</button>
         <span class="hint">Tap a square when it happens.</span>
       </div>
@@ -231,6 +232,7 @@ var firebaseConfig = {
     chosen.splice(FREE, 0, "FREE");
     return chosen;
   }
+  function total(p){ return (p.banked || 0) + score(p).n; }
   function score(p){
     var m = new Set(p.marked); m.add(FREE);
     var win = new Set(), n = 0;
@@ -245,7 +247,9 @@ var firebaseConfig = {
       id: id,
       name: String(d.name || "Guest").slice(0,16),
       board: board.map(function(x){ return String(x).slice(0,60); }),
-      marked: toList(d.marked).filter(function(i){ return Number.isInteger(i) && i>=0 && i<25; })
+      marked: toList(d.marked).filter(function(i){ return Number.isInteger(i) && i>=0 && i<25; }),
+      banked: Math.max(0, Math.min(500, Math.floor(Number(d.banked) || 0))),
+      cards: Math.max(0, Math.min(500, Math.floor(Number(d.cards) || 0)))
     };
   }
   function cleanIdea(d, id){
@@ -291,7 +295,7 @@ var firebaseConfig = {
     if (pending) { dirty = true; return; }
     pending = true;
     Promise.resolve()
-      .then(function(){ return set(ref(db, "players/" + myId), { uid: myId, name: me.name, board: me.board, marked: me.marked, t: Date.now() }); })
+      .then(function(){ return set(ref(db, "players/" + myId), { uid: myId, name: me.name, board: me.board, marked: me.marked, banked: me.banked || 0, cards: me.cards || 0, t: Date.now() }); })
       .catch(function(){ setStatus("Couldn’t save your last tap. Check your connection.", true); })
       .then(function(){ pending = false; if (dirty) { dirty = false; save(); } });
   }
@@ -365,7 +369,8 @@ var firebaseConfig = {
   function renderMine(){
     var sc = score(me);
     $("meName").textContent = me.name;
-    $("meScore").textContent = sc.n ? ("· " + sc.n + (sc.n===1 ? " bingo" : " bingos") + " 🎉") : ("· " + (sc.count-1) + "/24 squares");
+    $("meScore").textContent = "· " + total(me) + " pts · card " + ((me.cards || 0) + 1) + (sc.n ? " · " + sc.n + (sc.n===1 ? " bingo" : " bingos") + " 🎉" : " · " + (sc.count-1) + "/24 squares");
+    $("nextCard").hidden = !sc.n;
     var g = $("myGrid"); g.textContent = "";
     me.board.forEach(function(txt, i){
       var b = el("button", "tile", txt);
@@ -386,8 +391,8 @@ var firebaseConfig = {
     var box = $("others"); box.textContent = "";
     var list = Object.keys(players).map(function(id){ return players[id]; });
     if (me && !players[myId]) list.push(me);
-    list.forEach(function(p){ p._s = score(p); });
-    list.sort(function(a,b){ return (b._s.n - a._s.n) || (b._s.count - a._s.count); });
+    list.forEach(function(p){ p._s = score(p); p._t = total(p); });
+    list.sort(function(a,b){ return (b._t - a._t) || (b._s.count - a._s.count); });
     if (!list.length) { box.appendChild(el("div","hint","No one has joined yet.")); return; }
     list.forEach(function(p){
       var isMe = p.id === myId;
@@ -395,7 +400,7 @@ var firebaseConfig = {
       var top = el("div","top");
       var left = el("div");
       left.appendChild(el("div","nm", p.name + (isMe ? " (you)" : "")));
-      left.appendChild(el("div","meta", (p._s.count-1) + "/24 squares"));
+      left.appendChild(el("div","meta", p._t + " pts · " + (p.cards || 0) + " cards done · " + (p._s.count-1) + "/24 squares"));
       top.appendChild(left);
       if (p._s.n) top.appendChild(el("span","badge","BINGO ×" + p._s.n));
       card.appendChild(top);
@@ -506,7 +511,7 @@ var firebaseConfig = {
     var msg = $("joinMsg");
     if (!NAME_RE.test(n)) { msg.textContent = "One word only: letters or numbers, up to 16 characters."; return; }
     msg.textContent = "";
-    me = { id: myId || "local", name: n, board: newBoard(), marked: [FREE] };
+    me = { id: myId || "local", name: n, board: newBoard(), marked: [FREE], banked: 0, cards: 0 };
     render(); save();
   });
   $("nameIn").addEventListener("keydown", function(e){ if (e.key === "Enter") $("joinBtn").click(); });
@@ -521,9 +526,14 @@ var firebaseConfig = {
       btn.dataset.arm = ""; btn.textContent = label; fn();
     });
   }
-  armed($("newBoard"), "New board", "Tap again to confirm", 3000, function(){
+  function startNext(){
+    var n = score(me).n;
+    me.banked = (me.banked || 0) + n;
+    if (n > 0) me.cards = (me.cards || 0) + 1;
     me.board = newBoard(); me.marked = [FREE]; render(); save();
-  });
+  }
+  $("nextCard").addEventListener("click", startNext);
+  armed($("newBoard"), "New board", "Tap again to confirm", 3000, startNext);
   armed($("resetBoards"), "Reset all boards", "Tap again: removes everyone’s boards", 4000, function(){
     me = null; dbDo(remove(ref(db, "players")));
   });
