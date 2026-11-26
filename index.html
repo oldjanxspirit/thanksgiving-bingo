@@ -58,6 +58,13 @@ button:disabled{opacity:.5;cursor:default}
 .sect.fam{background:var(--card);border:2px solid var(--accent)}
 .sect.def{background:transparent;border:2px dashed var(--line)}
 .sect.def .idea{color:var(--muted)}
+#cele{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);overflow:hidden}
+#cele .msg{background:var(--win);color:#fff;border-radius:20px;padding:22px 26px;text-align:center;font-size:26px;font-weight:800;max-width:85%;box-shadow:0 8px 30px rgba(0,0,0,.4);animation:pop .5s ease-out}
+#cele .msg small{display:block;font-size:14px;font-weight:600;margin-top:6px;opacity:.9}
+#cele .cf{position:absolute;top:-40px;font-size:26px;animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.who.won{border:2px solid var(--win);box-shadow:0 0 0 2px var(--win) inset}
 details.panel{margin-top:24px}
 details summary{font-weight:700;cursor:pointer}
 .seg{display:flex;gap:6px;margin:10px 0}
@@ -247,6 +254,37 @@ var firebaseConfig = {
     return { id: id, text: d.text.slice(0,60), t: Number(d.t) || 0, status: st };
   }
 
+  /* ---------- celebration ---------- */
+  var winCount = {}, winInit = false, celeTimer;
+  function celebrate(name, mine){
+    var old = $("cele"); if (old) old.remove();
+    clearTimeout(celeTimer);
+    var o = el("div"); o.id = "cele";
+    var m = el("div","msg", mine ? "🎉 BINGO! You did it! 🎉" : "🎉 " + name + " got BINGO! 🎉");
+    m.appendChild(el("small","", "Tap to close"));
+    o.appendChild(m);
+    var bits = ["🎉","🦃","🍂","🥧","🍁","✨"];
+    for (var i=0;i<40;i++){
+      var c = el("span","cf", bits[i % bits.length]);
+      c.style.left = (Math.random()*100) + "%";
+      c.style.animationDuration = (2.5 + Math.random()*2.5) + "s";
+      c.style.animationDelay = (Math.random()*1.5) + "s";
+      o.appendChild(c);
+    }
+    o.addEventListener("click", function(){ o.remove(); });
+    document.body.appendChild(o);
+    celeTimer = setTimeout(function(){ o.remove(); }, 6000);
+    try { if (navigator.vibrate) navigator.vibrate([120,60,120]); } catch(e){}
+  }
+  function checkWins(){
+    Object.keys(players).forEach(function(id){
+      var n = score(players[id]).n;
+      if (winInit && n > (winCount[id] || 0)) celebrate(players[id].name, id === myId);
+      winCount[id] = n;
+    });
+    winInit = true;
+  }
+
   /* ---------- saving ---------- */
   function save(){
     if (!db || !myId || !me) return;
@@ -353,7 +391,7 @@ var firebaseConfig = {
     if (!list.length) { box.appendChild(el("div","hint","No one has joined yet.")); return; }
     list.forEach(function(p){
       var isMe = p.id === myId;
-      var card = el("div","who");
+      var card = el("div","who" + (p._s.n ? " won" : ""));
       var top = el("div","top");
       var left = el("div");
       left.appendChild(el("div","nm", p.name + (isMe ? " (you)" : "")));
@@ -532,6 +570,7 @@ var firebaseConfig = {
       var next = {};
       Object.keys(v || {}).forEach(function(id){ var p = cleanPlayer(v[id], id); if (p) next[id] = p; });
       players = next;
+      checkWins();
       if (!pending && !dirty && myId) me = players[myId] || (me && me.id === myId && !players[myId] ? me : null);
     });
   }
