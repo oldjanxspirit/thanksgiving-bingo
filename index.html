@@ -184,6 +184,7 @@ var firebaseConfig = {
     "Kids’ table drama","“One more bite”","Board game comes out","Pumpkin AND pecan","Laughing till crying"
   ];
   var FREE = 12;
+  var FREE_LABEL = "Caroline got into UGA 🐶";
   var NAME_RE = /^[A-Za-z0-9'-]{1,16}$/;
   var LINES = [];
   var r, c;
@@ -409,7 +410,7 @@ var firebaseConfig = {
     $("nextCard").hidden = !sc.n;
     var g = $("myGrid"); g.textContent = "";
     me.board.forEach(function(txt, i){
-      var b = el("button", "tile", txt);
+      var b = el("button", "tile", i === FREE ? FREE_LABEL : txt);
       if (i === FREE) b.className += " free marked";
       else if (sc.set.has(i)) b.className += " marked";
       if (sc.win.has(i)) b.className += " win";
@@ -443,7 +444,7 @@ var firebaseConfig = {
       if (open[p.id]) {
         var g = el("div","grid");
         p.board.forEach(function(txt,i){
-          var t = el("div","tile ro", txt);
+          var t = el("div","tile ro", i === FREE ? FREE_LABEL : txt);
           if (p._s.set.has(i)) t.className += " marked";
           if (p._s.win.has(i)) t.className += " win";
           g.appendChild(t);
