@@ -216,10 +216,10 @@ var firebaseConfig = {
   }
   function autoIncluded(){ return ITEMS.filter(function(t){ return !excluded[key(t)]; }); }
 
-  /* Weighted pool: family ideas x1.5, each net vote scales odds by e^0.35 (capped at +/-5). */
+  /* Weighted pool: family ideas x1.5, each net vote scales odds by e^0.25 (capped at +/-4). */
   function weightOf(item, family){
-    var t = tally(item), sc = Math.max(-5, Math.min(5, t.up - t.down));
-    return { w: (family ? 1.5 : 1) * Math.exp(0.35 * sc), sc: sc };
+    var t = tally(item), sc = Math.max(-4, Math.min(4, t.up - t.down));
+    return { w: (family ? 1.5 : 1) * Math.exp(0.25 * sc), sc: sc };
   }
   function buildPool(){
     var pool = [], seenKeys = {};
